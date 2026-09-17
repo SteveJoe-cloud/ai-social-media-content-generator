@@ -1,0 +1,240 @@
+{
+  "name": "AI Social Media Content Generator (Qwen)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "29e98ced-19d6-43b4-b90c-e29a123f2a7d",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        128,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "topic",
+              "name": "topic",
+              "value": "Benefits of self-hosting AI models",
+              "type": "string"
+            },
+            {
+              "id": "brand_voice",
+              "name": "brand_voice",
+              "value": "Tech-savvy, slightly irreverent, helpful. We love open source and privacy.",
+              "type": "string"
+            },
+            {
+              "id": "target_audience",
+              "name": "target_audience",
+              "value": "developers, sysadmins, tech enthusiasts",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bdfdb7f0-fe9c-4d6b-990e-02f287123a72",
+      "name": "Content Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        368,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ws-njlno7p99tz5wdvf.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'qwen-plus', messages: [ { role: 'system', content: 'You are a social media content generator. Return ONLY valid JSON, no markdown code fences, no commentary.' }, { role: 'user', content: 'Generate social media content for the topic: \"' + $json.topic + '\"\\n\\nBrand voice: ' + $json.brand_voice + '\\nTarget audience: ' + $json.target_audience + '\\n\\nReturn ONLY valid JSON with this structure:\\n{\\n  \"twitter\": \"Tweet (max 280 chars, include 2-3 relevant hashtags)\",\\n  \"linkedin\": \"LinkedIn post (3-4 paragraphs, professional tone, include hashtags)\",\\n  \"reddit_title\": \"Reddit post title (engaging, not clickbait)\",\\n  \"reddit_body\": \"Reddit post body (informative, genuine value, no hard sell)\",\\n  \"instagram_caption\": \"Instagram caption (engaging, with emoji, 5-10 hashtags at end)\"\\n}' } ], temperature: 0.7, max_tokens: 2000 }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "9f33e700-8e17-4cae-abcb-07e4f27800bc",
+      "name": "Generate All Platform Content (Qwen)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        592,
+        144
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ZG7H2ZYJ9QD2BxNf",
+          "name": "Header Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json.choices[0].message.content;\n// Extract JSON from response (handles cases where the model wraps it in ```json fences anyway)\nconst match = response.match(/\\{[\\s\\S]*\\}/);\nif (match) {\n  const content = JSON.parse(match[0]);\n  return [{ json: { ...content, topic: $('Content Parameters').first().json.topic, generated_at: new Date().toISOString() } }];\n}\nthrow new Error('Failed to parse AI response as JSON');"
+      },
+      "id": "e019369f-2075-4708-a38f-b30eda052b63",
+      "name": "Parse Content JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ws-njlno7p99tz5wdvf.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'qwen-plus', messages: [ { role: 'system', content: 'You are a meticulous content editor. Return ONLY valid JSON, no markdown code fences, no commentary.' }, { role: 'user', content: 'Review this social media content for quality. Check for:\\n1. Grammar and spelling errors\\n2. Tone consistency with brand voice\\n3. Platform-appropriate formatting\\n4. Hashtag relevance\\n\\nContent:\\nTwitter: ' + $json.twitter + '\\nLinkedIn: ' + $json.linkedin + '\\nReddit: ' + $json.reddit_title + ' — ' + $json.reddit_body + '\\nInstagram: ' + $json.instagram_caption + '\\n\\nIf any issues found, return corrected versions as JSON (same structure: twitter, linkedin, reddit_title, reddit_body, instagram_caption). If all good, return the same content. Return ONLY JSON.' } ], temperature: 0.2, max_tokens: 2000 }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "e6fa0d27-0b61-4fc4-b9d8-4931301d8011",
+      "name": "Review & Polish (Qwen)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1024,
+        144
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ZG7H2ZYJ9QD2BxNf",
+          "name": "Header Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json.choices[0].message.content;\nconst match = response.match(/\\{[\\s\\S]*\\}/);\nconst original = $('Parse Content JSON').first().json;\nif (match) {\n  try {\n    const reviewed = JSON.parse(match[0]);\n    return [{ json: { ...original, ...reviewed, reviewed: true } }];\n  } catch(e) {}\n}\nreturn [{ json: { ...original, reviewed: false } }];"
+      },
+      "id": "f36f32b5-4b2d-4310-a242-689db8f70f4a",
+      "name": "Final Content Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        144
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Content Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Content Parameters": {
+      "main": [
+        [
+          {
+            "node": "Generate All Platform Content (Qwen)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate All Platform Content (Qwen)": {
+      "main": [
+        [
+          {
+            "node": "Parse Content JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Content JSON": {
+      "main": [
+        [
+          {
+            "node": "Review & Polish (Qwen)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review & Polish (Qwen)": {
+      "main": [
+        [
+          {
+            "node": "Final Content Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "d75d5b13-be6b-4f0a-a058-773ad82b408b",
+  "meta": {
+    "instanceId": "b665cb047bd9e1e2f104431a15367fbc56cea2c74cd7e4d0795661a9356d507b"
+  },
+  "nodeGroups": [],
+  "id": "Nrd6I8sQ42nWRfwY",
+  "tags": [
+    {
+      "updatedAt": "2026-09-10T06:30:51.209Z",
+      "createdAt": "2026-09-10T06:30:51.209Z",
+      "id": "AyrY6KrzJUQwixnH",
+      "name": "AI"
+    },
+    {
+      "updatedAt": "2026-09-10T06:30:51.243Z",
+      "createdAt": "2026-09-10T06:30:51.243Z",
+      "id": "MCwEz7xMdlWAFzZl",
+      "name": "Social Media"
+    },
+    {
+      "updatedAt": "2026-09-10T06:30:51.232Z",
+      "createdAt": "2026-09-10T06:30:51.232Z",
+      "id": "eW22u1zgRcbNLpJ6",
+      "name": "Content"
+    },
+    {
+      "updatedAt": "2026-09-10T11:39:02.118Z",
+      "createdAt": "2026-09-10T11:39:02.118Z",
+      "id": "kZhPedUGVpOLRGFL",
+      "name": "Qwen"
+    },
+    {
+      "updatedAt": "2026-09-10T15:24:25.086Z",
+      "createdAt": "2026-09-10T15:24:25.086Z",
+      "id": "wjqSwDu8YA4xmFFF",
+      "name": "DashScope"
+    },
+    {
+      "updatedAt": "2026-09-10T06:30:51.220Z",
+      "createdAt": "2026-09-10T06:30:51.220Z",
+      "id": "zimmWiDX7ENwCAhS",
+      "name": "Ollama"
+    }
+  ]
+}
